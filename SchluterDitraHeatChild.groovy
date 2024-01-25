@@ -2,14 +2,12 @@
 * SchluterDitraHeatChild
 *
 * Description:
-* This Hubitat driver is designed for use with a Schluter DITRA-HEAT Wifi thermostat.  This is the child driver representing a single
-* thermostat under an account
+* This Hubitat driver is designed for use with a Schluter DITRA-HEAT Wifi thermostat.  This is the child device per thermostat.  It takes no direct configuration
 *
 * Preferences:
-* None - on aprent
 *
 * Features List:
-*   View data from Schluter DITRA-HEAT Wifi thermostats
+*   Control Schluter DITRA-HEAT Wifi thermostats
 * 
 * Licensing:
 * Copyright 2023 Marc Reyhner
@@ -28,52 +26,161 @@
 *   API details learned from py-schluter library - https://github.com/prairieapps/py-schluter/
 */
 
-
+import groovy.json.*
 
 metadata{
     definition ( name: "SchluterDitraHeatChild", namespace: "marcre", author: "Marc Reyhner", importUrl: "tbd" ) {
+        capability "Sensor"
+        capability "TemperatureMeasurement"
         capability "Thermostat"
+        capability "ThermostatHeatingSetpoint"
+        capability "ThermostatOperatingState"
+        capability "ThermostatSetpoint"
+        attribute "Group Name", "string"
+        attribute "Manual Temperature", "number"
+        attribute "Maximum Temperature", "number"
+        attribute "Minimum Temperature", "number"
+        attribute "Measured Load", "number"
+        attribute "Schedule Mode", "string"
+        attribute "Software Version", "string"
     }
 }
 
 def installed() {
-    sendEvent(name: 'supportedThermostatFanModes', value: ["\"auto\""] )
-    sendEvent(name: 'supportedThermostatModes', value: ["\"heat\"", "\"off\""] )
+    // Set static attributes at install time
+    sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(["auto"]) )
+    sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat"]) )
+    sendEvent(name: "thermostatFanMode", value: "auto")
+    sendEvent(name: "thermostatMode", "heat")
 }
 
 def ProcessUpdate(thermostat) {
-    Logging("Thermostat raw data ${thermostat}", 4)
+    if (getParent().DebugLogsEnabled()) log.debug("Thermostat raw data ${thermostat}.toString()")
 
-    UpsertAttribute("temperature", celsiusToFahrenheit(thermostat.Temperature / 100), "F")
-    UpsertAttribute("thermostatSetpoint", celsiusToFahrenheit(thermostat.SetPointTemp / 100), "F")
+    UpsertAttribute("temperature", thermostatToSystemUnits(thermostat.Temperature, 1), location.temperatureScale)
+    UpsertAttribute("thermostatOperatingState", thermostat.Heating ? "heating" : "idle")
+    UpsertAttribute("thermostatSetpoint", (int)thermostatToSystemUnits(thermostat.SetPointTemp, 0), location.temperatureScale)
+    UpsertAttribute("heatingSetpoint", (int)thermostatToSystemUnits(thermostat.SetPointTemp, 0), location.temperatureScale)
+    UpsertAttribute("Group Name", thermostat.GroupName)
+    UpsertAttribute("Manual Temperature", (int)thermostatToSystemUnits(thermostat.ManualTemperature, 0), location.temperatureScale)
+    UpsertAttribute("Maximum Temperature", (int)thermostatToSystemUnits(thermostat.MaxTemp, 0), location.temperatureScale)
+    UpsertAttribute("Minimum Temperature", (int)thermostatToSystemUnits(thermostat.MinTemp, 0), location.temperatureScale)
+    UpsertAttribute("Measured Load", thermostat.LoadMeasuredWatt, "W")
+    UpsertAttribute("Schedule Mode", ResolveScheduleMode(thermostat.RegulationMode))
+    UpsertAttribute("Software Version", thermostat.SWVersion)
 }
+
+def cool() {
+    log.warn("cool() is not supported and takes no action.")
+}
+
+def emergencyHeat() {
+    log.warn("emergencyHeat() is not supported and takes no action.")
+}
+
+def setCoolingSetpoint(requestedTemperator) {
+    log.warn("setCoolingSetpoint() is not supported and takes no action.")
+}
+
+def fanAuto() {
+    log.warn("fanAuto() is not supported and takes no action.")
+}
+
+def fanCirculate() {
+    log.warn("fanCirculate() is not supported and takes no action.")
+}
+
+def fanOn() {
+    log.warn("fanOn() is not supported and takes no action.")
+}
+
+def setSchedule(schedule) {
+    log.warn("setSchedule() is not supported and takes no action.")
+}
+
+def setThermostatFanMode(fanmode) {
+    log.warn("setThermostatFanMode() is not supported and takes no action.")
+}
+
+def auto() {
+    log.warn("auto() is not supported and takes no action.")
+}
+
+def heat() {
+    log.warn("heat() is not supported and takes no action.")
+}
+
+def off() {
+    log.warn("off() is not supported and takes no action.")
+}
+
+def setThermostatMode(thermostatMode) {
+    log.warn("setThermostatMode() is not supported and takes no action.")
+}
+
+def setHeatingSetpoint(temperature) {
+    log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} invoked.")
+    
+    minimumTemperature = device.currentValue("Minimum Temperature")
+    
+    if (temperature < minimumTemperature) {
+        log.warn("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is less than minimum temperature ${minimumTemperature}.  Will set to minimum temperature.")
+        
+        temperature = minimumTemperature;
+    }
+    
+    maximumTemperature = device.currentValue("Maximum Temperature")
+    
+    if (temperature > maximumTemperature) {
+        log.warn("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is greater than maximum temperature ${maximumTemperature}.  Will set to maximum temperature.")
+        
+        temperature = maximumTemperature;
+    }
+    
+    getParent().SetThermostatTemperature(device.deviceNetworkId, (int)(systemUnitsToCelsius(temperature)*100))
+}
+
 
 def UpsertAttribute( Variable, Value, Unit = null ){
     if( device.currentValue(Variable) != Value ){
 
         if( Unit != null ){
-            Logging( "Event: ${ Variable } = ${ Value }${ Unit }", 2 )
+            log.info( "Event: ${ Variable } = ${ Value }${ Unit }" )
             sendEvent( name: "${ Variable }", value: Value, unit: Unit )
         } else {
-            Logging( "Event: ${ Variable } = ${ Value }", 1 )
+            log.info( "Event: ${ Variable } = ${ Value }" )
             sendEvent( name: "${ Variable }", value: Value )
         }
     }
 }
 
-// Handles whether logging is enabled and thus what to put there.
-def Logging( LogMessage, LogLevel ){
-    
-    logType = getParent().LogType
-    
-    // Add all messages as info logging
-    if( ( LogLevel == 2 ) && ( logType != "None" ) ){
-        log.info( "${ device.displayName } - ${ LogMessage }" )
-    } else if( ( LogLevel == 3 ) && ( ( logType == "Debug" ) || ( logType == "Trace" ) ) ){
-        log.debug( "${ device.displayName } - ${ LogMessage }" )
-    } else if( ( LogLevel == 4 ) && ( logType == "Trace" ) ){
-        log.trace( "${ device.displayName } - ${ LogMessage }" )
-    } else if( LogLevel == 5 ){
-        log.error( "${ device.displayName } - ${ LogMessage }" )
+// Convert thermostat temperature (celsius * 100) to the system temperature
+def thermostatToSystemUnits(thermostatTemperature, precision) {
+    return celsiusToSystemUnits(thermostatTemperature / 100).doubleValue().round(precision)
+}
+
+// Convert celsius to the system temperature
+def celsiusToSystemUnits(celsiusTemperature) {
+    return (location.temperatureScale == "F") ? celsiusToFahrenheit(celsiusTemperature) : celsiusTemperature
+}
+
+// Convert system units to celsius
+def systemUnitsToCelsius(temperature) {
+    return (location.temperatureScale == "F") ? fahrenheitToCelsius(temperature) : temperature
+}
+
+// Translate the schedule mode enumeration from the thermostat to a friendly string
+def ResolveScheduleMode(regulationMode) {
+    switch (regulationMode) {
+        case 1:
+            return "Follow Schedule"
+        case 2:
+            return "Temporary Hold"
+        case 3:
+            return "Permanently Hold"
+        case 4:
+            return "Vacation"
+        default:
+            return regulationMode.toString()
     }
 }

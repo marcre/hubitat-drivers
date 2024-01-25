@@ -8,8 +8,7 @@
 * Email Address = REQUIRED. The e-mail address for the Schluter account
 * Password = REQUIRED. Login password for the Schluter account
 * RefreshRate = REQUIRED - DEFAULT = 5 minutes. The rate at which the thermostats will be polled
-* LogType = OPTIONAL - DEFAULT = Info. Only basic information will be stored to the log
-* ShowAllPreferences = OPTIONAL - DEFAULT = true. Whether the other preferences are to be displayed or not
+* DebugLogs = OPTIONAL - DEFAULT = false. Should debug logging be enabled?
 *
 * Features List:
 *   View data from Schluter DITRA-HEAT Wifi thermostats
@@ -44,20 +43,14 @@ metadata{
     }
     preferences{
         section{
-            if( ShowAllPreferences || ShowAllPreferences == null ){ // Show the preferences options
-                // String to retain the device's IP or hostname
-                input( type: "string", name: "EmailAddress", title: "<font color='FF0000'><b>Schulter account e-mail address</b></font>", required: true )
-                // String to retain the customer's login password
-                input( type: "password", name: "Password", title: "<font color='FF0000'><b>Schulter account password</b></font>", required: true )
-                // Enum to allow selecting the refresh rate that the device will be checked
-                input( type: "enum", name: "RefreshRate", title: "<b>Refresh Rate</b>", required: false, multiple: false, options: [ "5 seconds", "10 seconds", "15 seconds", "30 seconds", "1 minute", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "3 hours", "Manual" ], defaultValue: "5 minutes" )
-                // Enum to set the level of logging that will be used
-                input( type: "enum", name: "LogType", title: "<b>Enable Logging?</b>", required: true, multiple: false, options: [ "None", "Info", "Debug", "Trace" ], defaultValue: "Info" )
-                // Bool to set whether the other preferences should be displayed or not
-                input( type: "bool", name: "ShowAllPreferences", title: "<b>Show All Preferences?</b>", defaultValue: true )
-            } else { // Preferences should be hidden so only show the preference to show them or not
-                input( type: "bool", name: "ShowAllPreferences", title: "<b>Show All Preferences?</b>", defaultValue: true )
-            }
+            // String to retain the device's IP or hostname
+            input( type: "string", name: "EmailAddress", title: "<font color='FF0000'><b>Schulter account e-mail address</b></font>", required: true )
+            // String to retain the customer's login password
+            input( type: "password", name: "Password", title: "<font color='FF0000'><b>Schulter account password</b></font>", required: true )
+            // Enum to allow selecting the refresh rate that the device will be checked
+            input( type: "enum", name: "RefreshRate", title: "<b>Refresh Rate</b>", required: false, multiple: false, options: [ "5 seconds", "10 seconds", "15 seconds", "30 seconds", "1 minute", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "3 hours", "Manual" ], defaultValue: "5 minutes" )
+            // Enum to set the level of logging that will be used
+            input( type: "bool", name: "DebugLogs", title: "<b>Enable Debug Logging?</b>", required: true, multiple: false, defaultValue: false )
         }
     }
 }
@@ -68,7 +61,7 @@ void uninstalled() {
 	getChildDevices().each{
 		deleteChildDevice( it.deviceNetworkId )
 	}
-	Logging( "Uninstalled", 2 )
+    log.info("Uninstalled")
 }
 
 // updated is called whenever device parameters are saved
@@ -77,11 +70,6 @@ def updated() {
 
     // On update clear out any old session id in case login information changed
     state.remove("SessionId")
-
-    // Set basic info logging if for some reason the preference is null
-    if( LogType == null ) {
-        LogType = "Info"
-    }
 
     // Check if the refresh rate is not set for some reason and putting it at the default
     if( RefreshRate == null ) {
@@ -133,9 +121,9 @@ def updated() {
             RefreshRate = "Manual"
             break
     }
-    Logging( "Refresh rate: ${ RefreshRate }", 4 )
+    log.info( "Refresh rate: ${ RefreshRate }" )
 
-    Logging( "Updated", 2 )
+    log.info("Updated")
 }
 
 // refresh runs the device polling
@@ -143,7 +131,7 @@ def refresh() {
     
     if( EmailAddress == null || Password == null){
         UpsertAttribute( "Status", "Unsuccessful: Lacking account email or password" )
-        Logging( "Cannot update thermostats without username or password", 5 )
+        log.error( "Cannot update thermostats without username or password" )
 
         return
     }
@@ -160,7 +148,7 @@ def refresh() {
     }
     catch (IOException e)
     {
-        Logging( "Error connecting to API for status. ${e}", 5 )
+        log.error( "Error connecting to API for status. ${e}" )
         UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
     }
 }
@@ -168,7 +156,7 @@ def refresh() {
 def LoginIfSessionExpired(baseUri) {
 
     if (GetCurrentSessionId()) {
-        Logging("Valid session, no need to request new", 3)
+        if (DebugLogsEnabled()) log.trace("Valid session, no need to request new")
 
         return
     }
@@ -184,19 +172,52 @@ def LoginIfSessionExpired(baseUri) {
     }
 }
 
+def SetThermostatTemperature(serialNumber, temperature) {
+    log.info("Received request to update temperature to ${temperature} for thermostat ${serialNumber}")
+    
+    if( EmailAddress == null || Password == null){
+        UpsertAttribute( "Status", "Unsuccessful: Lacking account email or password" )
+        log.error( "Cannot update thermostats without username or password" )
+
+        return
+    }
+
+    baseUri = "https://ditra-heat-e-wifi.schluter.com/"
+
+    try {
+
+        LoginIfSessionExpired(baseUri)
+        
+        body = [
+            ManualTemperature: temperature,
+            RegulationMode: 3,
+            VacationEnabled: false
+        ]
+
+        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
+            resp -> ProcessUpdateThermostatResponse(resp)
+        }
+    }
+    catch (IOException e)
+    {
+        log.error( "Error connecting to API for status. ${e}" )
+        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
+    }
+}
+
 // Gets the current session id if there is one, null if none or expired
 def GetCurrentSessionId() {
 
     session = state.SessionId
 
     if (!session) {
-        Logging("No current session avaiable", 3)
+        if (DebugLogsEnabled()) log.trace("No current session avaiable")
 
         return null
     }
 
     if (OffsetDateTime.now() > OffsetDateTime.parse(session.issueTime, DateTimeFormatter.ISO_OFFSET_DATE_TIME).plusHours(1)) {
-        Logging("Session is expired", 3)
+        if (DebugLogsEnabled()) log.trace("Session is expired")
 
         return null
     }
@@ -204,30 +225,53 @@ def GetCurrentSessionId() {
     return decrypt(session.sessionId)
 }
 
+def ProcessUpdateThermostatResponse(response) {
+    switch( response.getStatus() ){
+        case 200:
+            if (DebugLogsEnabled()) log.debug( "Succesfully updated thermostat: ${response.getData()}." )
+        
+            refresh()
+
+            break
+        default:
+            log.error( "Error connecting to API for updating thermostat. ${ response.getStatus() }" )
+            break
+    }
+}
+
 def ProcessLoginResponse(response) {
     switch( response.getStatus() ){
         case 200:
-            Logging( "Login raw data = \"${ response.getData() }\"", 4 )
+            ProcessLoginSuccessResponse(response)
 
-            if (response.data.ErrorCode != 0) {
-                Logging( "Login failed with code ${response.data.ErrorCode}", 5 )
-                UpsertAttribute( "Status", "Login Failed with code ${response.data.ErrorCode}" )
-
-                return
-            }
-
-            state.SessionId = [
-                sessionId: encrypt(response.data.SessionId),
-                issueTime: OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-            ]
-
-            Logging( "Succesfully logged in to Schluter API.", 4 )
-            UpsertAttribute( "Status", "Login Succeeded" )
             break
         default:
-            Logging( "Error connecting to API for login. ${ response.getStatus() }", 5 )
+            log.error( "Error connecting to API for login. ${ response.getStatus() }" )
             UpsertAttribute( "Status", "Login Failed" )
             break
+    }
+}
+
+def ProcessLoginSuccessResponse(response) {
+
+    if (DebugLogsEnabled()) {
+        log.debug("Login raw data = \"${response.getData()}\"")
+    }
+
+    if (response.data.ErrorCode != 0) {
+        log.error( "Login failed with code ${response.data.ErrorCode}" )
+        UpsertAttribute( "Status", "Login Failed with code ${response.data.ErrorCode}" )
+
+        return
+    }
+
+    state.SessionId = [
+        sessionId: encrypt(response.data.SessionId),
+        issueTime: OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+    ]
+
+    if (DebugLogsEnabled()) {
+        log.debug("Succesfully logged in to Schluter API.")
     }
 }
 
@@ -235,30 +279,35 @@ def ProcessGetThermostatsResponse(response) {
     switch( response.getStatus() ){
         case 200:
 
-            def thermostats = [:]
+            ProcessGetThermostatsSuccessResponse(response.data)
 
-            for (group in response.data.Groups) {
-                for (thermostat in group.Thermostats) {
-                    thermostats[thermostat.SerialNumber] = thermostat
-                    
-                    ProcessThermostatUpdate(thermostat)
-                }
-            }
-
-            getChildDevices().each{
-                if (!thermostats[it.deviceNetworkId]) {
-                    Logging("Removing child thermostat ${it.deviceNetworkId}, ${it.name}.", 2)
-                    deleteChildDevice( it.deviceNetworkId )
-                }
-            }
-
-            Logging( "Succesfully queried thermostats state.", 4 )
+            if (DebugLogsEnabled()) log.trace( "Succesfully queried thermostats state." )
             UpsertAttribute( "Status", "Query thermostats succeeded" )
             break
         default:
-            Logging( "Error connecting to API for getting thermostats. ${ response.getStatus() }", 5 )
+            log.error( "Error connecting to API for getting thermostats. ${response.getStatus()}" )
             UpsertAttribute( "Status", "Query thermostats failed" )
             break
+    }
+}
+
+def ProcessGetThermostatsSuccessResponse(responseData) {
+    
+    def thermostats = [:]
+
+    for (group in responseData.Groups) {
+        for (thermostat in group.Thermostats) {
+            thermostats[thermostat.SerialNumber] = thermostat
+
+            ProcessThermostatUpdate(thermostat)
+        }
+    }
+
+    getChildDevices().each{
+        if (!thermostats[it.deviceNetworkId]) {
+            log.info("Removing child thermostat ${it.deviceNetworkId}, ${it.name}.")
+            deleteChildDevice( it.deviceNetworkId )
+        }
     }
 }
 
@@ -267,7 +316,7 @@ def ProcessThermostatUpdate(thermostat) {
     if (!getChildDevice(thermostat.SerialNumber)) {
         addChildDevice("SchluterDitraHeatChild", thermostat.SerialNumber, [
             isComponent: true,
-            name: thermostat.Room
+            name: "${thermostat.Room} Thermostat" 
         ])
     }
 
@@ -275,29 +324,19 @@ def ProcessThermostatUpdate(thermostat) {
 }
 
 // Update an attribute if it has changed
-def UpsertAttribute( Variable, Value, Unit = null ){
-    if( device.currentValue(Variable) != Value ){
-
-        if( Unit != null ){
-            Logging( "Event: ${ Variable } = ${ Value }${ Unit }", 2 )
-            sendEvent( name: "${ Variable }", value: Value, unit: Unit )
+def UpsertAttribute( name, value, unit = null ) {
+    
+    if (device.currentValue(name) != value) {
+        if (unit != null) {
+            log.info("Event: ${name} = ${value}${unit}")
+            sendEvent(name: name, value: value, unit: unit)
         } else {
-            Logging( "Event: ${ Variable } = ${ Value }", 1 )
-            sendEvent( name: "${ Variable }", value: Value )
+            log.info("Event: ${name} = ${value}")
+            sendEvent(name: name, value: value)
         }
     }
 }
 
-// Handles whether logging is enabled and thus what to put there.
-def Logging( LogMessage, LogLevel ){
-    // Add all messages as info logging
-    if( ( LogLevel == 2 ) && ( LogType != "None" ) ){
-        log.info( "${ device.displayName } - ${ LogMessage }" )
-    } else if( ( LogLevel == 3 ) && ( ( LogType == "Debug" ) || ( LogType == "Trace" ) ) ){
-        log.debug( "${ device.displayName } - ${ LogMessage }" )
-    } else if( ( LogLevel == 4 ) && ( LogType == "Trace" ) ){
-        log.trace( "${ device.displayName } - ${ LogMessage }" )
-    } else if( LogLevel == 5 ){
-        log.error( "${ device.displayName } - ${ LogMessage }" )
-    }
+def DebugLogsEnabled() {
+     return DebugLogs
 }
