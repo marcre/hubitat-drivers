@@ -130,13 +130,21 @@ def updated() {
     log.info("Updated")
 }
 
-// refresh runs the device polling
-def refresh() {
-    
+def CanProceed() {
     if( EmailAddress == null || Password == null){
         UpsertAttribute( "Status", "Unsuccessful: Lacking account email or password" )
         log.error( "Cannot update thermostats without username or password" )
 
+        return false
+    }
+
+    return true
+}
+
+// refresh runs the device polling
+def refresh() {
+
+    if (!CanProceed()) {
         return
     }
 
@@ -176,18 +184,15 @@ def LoginIfSessionExpired() {
 
 def SetThermostatTemperature(serialNumber, temperature) {
     log.info("Received request to update temperature to ${temperature} for thermostat ${serialNumber}")
-    
-    if( EmailAddress == null || Password == null){
-        UpsertAttribute( "Status", "Unsuccessful: Lacking account email or password" )
-        log.error( "Cannot update thermostats without username or password" )
 
+    if (!CanProceed()) {
         return
     }
 
     try {
 
         LoginIfSessionExpired()
-        
+
         body = [
             ManualTemperature: temperature,
             RegulationMode: 3,
@@ -202,6 +207,60 @@ def SetThermostatTemperature(serialNumber, temperature) {
     {
         log.error( "Error connecting to API for status. ${e}" )
         UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
+    }
+}
+
+def SetThermostatVacationMode(serialNumber) {
+    log.info("Received request to set vacation mode for thermostat ${serialNumber}")
+
+    if (!CanProceed()) {
+        return
+    }
+
+    try {
+
+        LoginIfSessionExpired()
+
+        body = [
+            RegulationMode: 4,
+            VacationEnabled: true
+        ]
+
+        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
+            resp -> ProcessUpdateThermostatResponse(resp)
+        }
+    }
+    catch (IOException e)
+    {
+        log.error( "Error connecting to API for status. ${e}" )
+        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
+    }
+}
+
+def SetThermostatFollowSchedule(serialNumber) {
+    log.info("Received request to resume schedule for thermostat ${serialNumber}")
+
+    if (!CanProceed()) {
+        return
+    }
+
+    try {
+
+        LoginIfSessionExpired()
+
+        body = [
+            RegulationMode: 1,
+            VacationEnabled: false
+        ]
+
+        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
+            resp -> ProcessUpdateThermostatResponse(resp)
+        }
+    }
+    catch (IOException e)
+    {
+        log.error( "Error connecting to API for status. ${e}" )
+        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
     }
 }
 

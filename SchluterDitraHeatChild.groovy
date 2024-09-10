@@ -103,15 +103,18 @@ def setThermostatFanMode(fanmode) {
 }
 
 def auto() {
-    log.warn("auto() is not supported and takes no action.")
+    log.info("auto() on ${device.getDisplayName()} invoked.")
+    getParent().SetThermostatFollowSchedule(device.deviceNetworkId)
 }
 
 def heat() {
-    log.warn("heat() is not supported and takes no action.")
+    log.info("auto() on ${device.getDisplayName()} invoked.")
+    getParent().SetThermostatFollowSchedule(device.deviceNetworkId)
 }
 
 def off() {
-    log.warn("off() is not supported and takes no action.")
+    log.info("off() on ${device.getDisplayName()} invoked.")
+    getParent().SetThermostatVacationMode(device.deviceNetworkId)
 }
 
 def setThermostatMode(thermostatMode) {
