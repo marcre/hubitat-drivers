@@ -51,7 +51,7 @@ def installed() {
     sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(["auto"]) )
     sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat"]) )
     sendEvent(name: "thermostatFanMode", value: "auto")
-    sendEvent(name: "thermostatMode", "heat")
+    sendEvent(name: "thermostatMode", value: "heat")
 }
 
 def ProcessUpdate(thermostat) {
