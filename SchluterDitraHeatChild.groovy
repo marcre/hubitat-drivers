@@ -31,6 +31,7 @@ import groovy.json.*
 metadata{
     definition ( name: "SchluterDitraHeatChild", namespace: "marcre", author: "Marc Reyhner", importUrl: "tbd" ) {
         capability "Sensor"
+        capability "Refresh"
         capability "TemperatureMeasurement"
         capability "Thermostat"
         capability "ThermostatHeatingSetpoint"
@@ -127,6 +128,11 @@ def heat() {
 def off() {
     log.info("off() on ${device.getDisplayName()} invoked.")
     getParent().SetThermostatVacationMode(device.deviceNetworkId)
+}
+
+def refresh() {
+    log.info("refresh() on ${device.getDisplayName()} invoked.")
+    getParent().refresh()
 }
 
 def setThermostatMode(thermostatMode) {
