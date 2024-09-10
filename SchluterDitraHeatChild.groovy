@@ -61,10 +61,9 @@ metadata{
 
 def installed() {
     // Set static attributes at install time
-    sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(["auto"]) )
-    sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat"]) )
-    sendEvent(name: "thermostatFanMode", value: "auto")
-    sendEvent(name: "thermostatMode", value: "heat")
+    sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(["off"]) )
+    sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat", "off"]) )
+    sendEvent(name: "thermostatFanMode", value: "off")
 }
 
 def ProcessUpdate(thermostat) {
@@ -80,6 +79,7 @@ def ProcessUpdate(thermostat) {
     UpsertAttribute("Minimum Temperature", (int)thermostatToSystemUnits(thermostat.MinTemp, 0), location.temperatureScale)
     UpsertAttribute("Measured Load", thermostat.LoadMeasuredWatt, "W")
     UpsertAttribute("Schedule Mode", ResolveScheduleMode(thermostat.RegulationMode))
+    UpsertAttribute("thermostatMode", thermostat.RegulationMode == 4 ? "off" : "heat")
     UpsertAttribute("Software Version", thermostat.SWVersion)
 }
 
