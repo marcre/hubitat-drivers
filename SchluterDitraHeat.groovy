@@ -32,6 +32,10 @@
 
 import java.time.format.DateTimeFormatter
 import java.time.OffsetDateTime
+import groovy.transform.Field
+
+@Field static final String baseUri = "https://ditra-heat-e-wifi.schluter.com/"
+
 
 metadata{
     definition ( name: "SchluterDitraHeat", namespace: "marcre", author: "Marc Reyhner", importUrl: "tbd" ) {
@@ -136,11 +140,9 @@ def refresh() {
         return
     }
 
-    baseUri = "https://ditra-heat-e-wifi.schluter.com/"
-
     try {
 
-        LoginIfSessionExpired(baseUri)
+        LoginIfSessionExpired()
 
         httpGet([ uri: "${baseUri}/api/thermostats?sessionId=${GetCurrentSessionId()}" ]) {
             resp -> ProcessGetThermostatsResponse(resp)
@@ -153,7 +155,7 @@ def refresh() {
     }
 }
 
-def LoginIfSessionExpired(baseUri) {
+def LoginIfSessionExpired() {
 
     if (GetCurrentSessionId()) {
         if (DebugLogsEnabled()) log.trace("Valid session, no need to request new")
@@ -182,11 +184,9 @@ def SetThermostatTemperature(serialNumber, temperature) {
         return
     }
 
-    baseUri = "https://ditra-heat-e-wifi.schluter.com/"
-
     try {
 
-        LoginIfSessionExpired(baseUri)
+        LoginIfSessionExpired()
         
         body = [
             ManualTemperature: temperature,
