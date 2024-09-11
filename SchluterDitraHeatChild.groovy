@@ -56,14 +56,18 @@ metadata{
         attribute "thermostatMode", "string"
         attribute "thermostatOperatingState", "string"
         attribute "thermostatSetpoint", "number"
+
+        command "followSchedule"
+        command "vacationMode"
     }
 }
 
 def installed() {
     // Set static attributes at install time
     sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(["off"]) )
-    sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat", "off"]) )
+    sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat"]) )
     sendEvent(name: "thermostatFanMode", value: "off")
+    sendEvent(name: "thermostatMode", value: "off")
 }
 
 def ProcessUpdate(thermostat) {
@@ -116,18 +120,25 @@ def setThermostatFanMode(fanmode) {
 }
 
 def auto() {
-    log.info("auto() on ${device.getDisplayName()} invoked.")
-    getParent().SetThermostatFollowSchedule(device.deviceNetworkId)
+    log.warn("auto() is not supported and takes no action.")
 }
 
 def heat() {
-    log.info("auto() on ${device.getDisplayName()} invoked.")
-    getParent().SetThermostatFollowSchedule(device.deviceNetworkId)
+    log.warn("heat() is not supported and takes no action.")
 }
 
 def off() {
-    log.info("off() on ${device.getDisplayName()} invoked.")
+    log.warn("off() is not supported and takes no action.")
+}
+
+def vacationMode() {
+    log.info("vacationMode() on ${device.getDisplayName()} invoked.")
     getParent().SetThermostatVacationMode(device.deviceNetworkId)
+}
+
+def followSchedule() {
+    log.info("followSchedule() on ${device.getDisplayName()} invoked.")
+    getParent().SetThermostatFollowSchedule(device.deviceNetworkId)
 }
 
 def refresh() {
