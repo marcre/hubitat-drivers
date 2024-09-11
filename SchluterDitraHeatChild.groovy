@@ -46,18 +46,6 @@ metadata{
         attribute "Schedule Mode", "string"
         attribute "Software Version", "string"
 
-        // Temperature Measurement
-        attribute "temperature", "number"
-
-        // Thermostat
-        attribute "heatingSetpoint", "number"
-        attribute "supportedThermostatFanModes", "string"
-        attribute "supportedThermostatModes", "string"
-        attribute "thermostatFanMode", "string"
-        attribute "thermostatMode", "string"
-        attribute "thermostatOperatingState", "string"
-        attribute "thermostatSetpoint", "number"
-
         command "followSchedule"
         command "vacationMode", [
             [name: "Start Date", type: "STRING", description: "YYYY-MM-DD"],
