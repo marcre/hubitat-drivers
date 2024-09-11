@@ -72,7 +72,7 @@ def installed() {
     sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(["off"]) )
     sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(["heat"]) )
     sendEvent(name: "thermostatFanMode", value: "off")
-    sendEvent(name: "thermostatMode", value: "off")
+    sendEvent(name: "thermostatMode", value: "heat")
 }
 
 def ProcessUpdate(thermostat) {
@@ -88,7 +88,6 @@ def ProcessUpdate(thermostat) {
     UpsertAttribute("Minimum Temperature", (int)thermostatToSystemUnits(thermostat.MinTemp, 0), location.temperatureScale)
     UpsertAttribute("Measured Load", thermostat.LoadMeasuredWatt, "W")
     UpsertAttribute("Schedule Mode", ResolveScheduleMode(thermostat.RegulationMode))
-    UpsertAttribute("thermostatMode", thermostat.RegulationMode == 4 ? "off" : "heat")
     UpsertAttribute("Software Version", thermostat.SWVersion)
 }
 
