@@ -48,8 +48,8 @@ metadata{
 
         command "followSchedule"
         command "vacationMode", [
-            [name: "Start Date", type: "STRING", description: "YYYY-MM-DD"],
-            [name: "End Date", type: "STRING", description: "YYYY-MM-DD"],
+            [name: "Start Date (inclusive)", type: "STRING", description: "YYYY-MM-DD"],
+            [name: "End Date (exclusive)", type: "STRING", description: "YYYY-MM-DD"],
             [name: "Temperature", type: "NUMBER", unit: "°"]
         ]
     }
