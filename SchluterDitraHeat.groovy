@@ -33,6 +33,7 @@
 import java.time.format.DateTimeFormatter
 import java.time.OffsetDateTime
 import groovy.transform.Field
+import java.time.LocalDate
 
 @Field static final String baseUri = "https://ditra-heat-e-wifi.schluter.com/"
 
@@ -210,8 +211,8 @@ def SetThermostatTemperature(serialNumber, temperature) {
     }
 }
 
-def SetThermostatVacationMode(serialNumber) {
-    log.info("Received request to set vacation mode for thermostat ${serialNumber}")
+def SetThermostatVacationMode(String serialNumber, LocalDate startDate, LocalDate endDate, int temperature) {
+    log.info("Received request to set vacation mode for thermostat ${serialNumber} from ${startDate} to ${endDate} at ${temperature}")
 
     if (!CanProceed()) {
         return
@@ -221,9 +222,14 @@ def SetThermostatVacationMode(serialNumber) {
 
         LoginIfSessionExpired()
 
+        def formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
+
         body = [
             RegulationMode: 4,
-            VacationEnabled: true
+            VacationBeginDay: startDate.atStartOfDay().format(formatter),
+            VacationEnabled: true,
+            VacationEndDay: endDate.atStartOfDay().format(formatter),
+            VacationTemperature: temperature
         ]
 
         httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {

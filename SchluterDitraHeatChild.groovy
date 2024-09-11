@@ -27,6 +27,7 @@
 */
 
 import groovy.json.*
+import java.time.LocalDate
 
 metadata{
     definition ( name: "SchluterDitraHeatChild", namespace: "marcre", author: "Marc Reyhner", importUrl: "tbd" ) {
@@ -58,7 +59,11 @@ metadata{
         attribute "thermostatSetpoint", "number"
 
         command "followSchedule"
-        command "vacationMode"
+        command "vacationMode", [
+            [name: "Start Date", type: "STRING", description: "YYYY-MM-DD"],
+            [name: "End Date", type: "STRING", description: "YYYY-MM-DD"],
+            [name: "Temperature", type: "NUMBER", unit: "°C"]
+        ]
     }
 }
 
@@ -131,9 +136,39 @@ def off() {
     log.warn("off() is not supported and takes no action.")
 }
 
-def vacationMode() {
-    log.info("vacationMode() on ${device.getDisplayName()} invoked.")
-    getParent().SetThermostatVacationMode(device.deviceNetworkId)
+def vacationMode(startDateString = null, endDateString = null, temperature = null) {
+    log.info("vacationMode(${startDateString}, ${endDateString}, ${temperature}) on ${device.getDisplayName()} invoked.")
+
+    LocalDate today = LocalDate.now()
+    LocalDate startDate = today
+    LocalDate endDate = today.plusDays(1)
+    try {
+        if( startDateString ) {
+            startDate = LocalDate.parse(startDateString)
+        }
+        if( endDateString ) {
+            endDate = LocalDate.parse(endDateString)
+        }
+    }
+    catch (Exception e) {
+        log.error("Error parsing dates: ${e}")
+        return
+    }
+
+    // If the start date is in the past, set to today
+    if (startDate < today) {
+        startDate = today
+    }
+
+    // If the end date is not after the start date, set to the next day
+    if (endDate <= startDate) {
+        endDate = startDate.plusDays(1)
+    }
+
+    // If the temperature is outside the thermostat's range, set to the min/max
+    temperature = normalizeTemperature(temperature)
+
+    getParent().SetThermostatVacationMode(device.deviceNetworkId, startDate, endDate, (int)(systemUnitsToCelsius(temperature)*100))
 }
 
 def followSchedule() {
@@ -150,25 +185,35 @@ def setThermostatMode(thermostatMode) {
     log.warn("setThermostatMode() is not supported and takes no action.")
 }
 
-def setHeatingSetpoint(temperature) {
-    log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} invoked.")
-    
+def normalizeTemperature(temperature) {
     minimumTemperature = device.currentValue("Minimum Temperature")
-    
-    if (temperature < minimumTemperature) {
-        log.warn("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is less than minimum temperature ${minimumTemperature}.  Will set to minimum temperature.")
-        
-        temperature = minimumTemperature;
+
+    if (temperature == null) {
+        return minimumTemperature;
     }
-    
+
+    if (temperature < minimumTemperature) {
+        log.warn("${temperature} on ${device.getDisplayName()} is less than minimum temperature ${minimumTemperature}.  Will set to minimum temperature.")
+
+        return minimumTemperature;
+    }
+
     maximumTemperature = device.currentValue("Maximum Temperature")
-    
+
     if (temperature > maximumTemperature) {
         log.warn("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} is greater than maximum temperature ${maximumTemperature}.  Will set to maximum temperature.")
-        
-        temperature = maximumTemperature;
+
+        return maximumTemperature;
     }
-    
+
+    return temperature;
+}
+
+def setHeatingSetpoint(temperature) {
+    log.info("setHeatingSetpoint(${temperature}) on ${device.getDisplayName()} invoked.")
+
+    temperature = normalizeTemperature(temperature)
+
     getParent().SetThermostatTemperature(device.deviceNetworkId, (int)(systemUnitsToCelsius(temperature)*100))
 }
 
