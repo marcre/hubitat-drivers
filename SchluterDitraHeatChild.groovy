@@ -124,15 +124,15 @@ def setThermostatFanMode(fanmode) {
 }
 
 def auto() {
-    log.warn("auto() is not supported and takes no action.")
+    log.warn("auto() is not supported and takes no action. Consider setting the thermostat to Follow Schedule instead.")
 }
 
 def heat() {
-    log.warn("heat() is not supported and takes no action.")
+    log.warn("heat() is not supported and takes no action. Consider setting the thermostat to Follow Schedule instead.")
 }
 
 def off() {
-    log.warn("off() is not supported and takes no action.")
+    log.warn("off() is not supported and takes no action. Consider setting the thermostat to Vacation Mode instead.")
 }
 
 def vacationMode(startDateString = null, endDateString = null, temperature = null) {
