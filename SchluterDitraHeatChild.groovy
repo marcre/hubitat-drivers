@@ -62,7 +62,7 @@ metadata{
         command "vacationMode", [
             [name: "Start Date", type: "STRING", description: "YYYY-MM-DD"],
             [name: "End Date", type: "STRING", description: "YYYY-MM-DD"],
-            [name: "Temperature", type: "NUMBER", unit: "°C"]
+            [name: "Temperature", type: "NUMBER", unit: "°"]
         ]
     }
 }
