@@ -32,6 +32,11 @@
 
 import java.time.format.DateTimeFormatter
 import java.time.OffsetDateTime
+import groovy.transform.Field
+import java.time.LocalDate
+
+@Field static final String baseUri = "https://ditra-heat-e-wifi.schluter.com/"
+
 
 metadata{
     definition ( name: "SchluterDitraHeat", namespace: "marcre", author: "Marc Reyhner", importUrl: "tbd" ) {
@@ -126,21 +131,27 @@ def updated() {
     log.info("Updated")
 }
 
-// refresh runs the device polling
-def refresh() {
-    
+def CanProceed() {
     if( EmailAddress == null || Password == null){
         UpsertAttribute( "Status", "Unsuccessful: Lacking account email or password" )
         log.error( "Cannot update thermostats without username or password" )
 
+        return false
+    }
+
+    return true
+}
+
+// refresh runs the device polling
+def refresh() {
+
+    if (!CanProceed()) {
         return
     }
 
-    baseUri = "https://ditra-heat-e-wifi.schluter.com/"
-
     try {
 
-        LoginIfSessionExpired(baseUri)
+        LoginIfSessionExpired()
 
         httpGet([ uri: "${baseUri}/api/thermostats?sessionId=${GetCurrentSessionId()}" ]) {
             resp -> ProcessGetThermostatsResponse(resp)
@@ -153,7 +164,7 @@ def refresh() {
     }
 }
 
-def LoginIfSessionExpired(baseUri) {
+def LoginIfSessionExpired() {
 
     if (GetCurrentSessionId()) {
         if (DebugLogsEnabled()) log.trace("Valid session, no need to request new")
@@ -174,20 +185,15 @@ def LoginIfSessionExpired(baseUri) {
 
 def SetThermostatTemperature(serialNumber, temperature) {
     log.info("Received request to update temperature to ${temperature} for thermostat ${serialNumber}")
-    
-    if( EmailAddress == null || Password == null){
-        UpsertAttribute( "Status", "Unsuccessful: Lacking account email or password" )
-        log.error( "Cannot update thermostats without username or password" )
 
+    if (!CanProceed()) {
         return
     }
 
-    baseUri = "https://ditra-heat-e-wifi.schluter.com/"
-
     try {
 
-        LoginIfSessionExpired(baseUri)
-        
+        LoginIfSessionExpired()
+
         body = [
             ManualTemperature: temperature,
             RegulationMode: 3,
@@ -202,6 +208,65 @@ def SetThermostatTemperature(serialNumber, temperature) {
     {
         log.error( "Error connecting to API for status. ${e}" )
         UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
+    }
+}
+
+def SetThermostatVacationMode(String serialNumber, LocalDate startDate, LocalDate endDate, int temperature) {
+    log.info("Received request to set vacation mode for thermostat ${serialNumber} from ${startDate} to ${endDate} at ${temperature}")
+
+    if (!CanProceed()) {
+        return
+    }
+
+    try {
+
+        LoginIfSessionExpired()
+
+        def formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
+
+        body = [
+            RegulationMode: 4,
+            VacationBeginDay: startDate.atStartOfDay().format(formatter),
+            VacationEnabled: true,
+            VacationEndDay: endDate.atStartOfDay().format(formatter),
+            VacationTemperature: temperature
+        ]
+
+        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
+            resp -> ProcessUpdateThermostatResponse(resp)
+        }
+    }
+    catch (IOException e)
+    {
+        log.error( "Error connecting to API for status. ${e}" )
+        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
+    }
+}
+
+def SetThermostatFollowSchedule(serialNumber) {
+    log.info("Received request to resume schedule for thermostat ${serialNumber}")
+
+    if (!CanProceed()) {
+        return
+    }
+
+    try {
+
+        LoginIfSessionExpired()
+
+        body = [
+            RegulationMode: 1,
+            VacationEnabled: false
+        ]
+
+        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
+            resp -> ProcessUpdateThermostatResponse(resp)
+        }
+    }
+    catch (IOException e)
+    {
+        log.error( "Error connecting to API for status. ${e}" )
+        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
     }
 }
 
