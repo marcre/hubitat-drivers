@@ -143,7 +143,7 @@ def CanProceed() {
 }
 
 // refresh runs the device polling
-def refresh() {
+def refresh(Boolean autoLogin = true) {
 
     if (!CanProceed()) {
         return
@@ -157,11 +157,28 @@ def refresh() {
             resp -> ProcessGetThermostatsResponse(resp)
         }
     }
+    catch (groovyx.net.http.HttpResponseException e) {
+        if( e.getStatusCode() == 401 && autoLogin ) {
+            if (DebugLogsEnabled()) log.trace("Session expired, logging in again")
+            UpsertAttribute( "Status", "Session expired; will log in and retry" ) 
+            state.remove("SessionId")
+            LoginIfSessionExpired()
+            runIn( 5, "refresh", [data: [ autoLogin: false ]]) // Retry the refresh after logging in
+        }
+        else {
+            log.error( "Error connecting to API for status. ${e}" )
+            UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
+        }
+    }
     catch (IOException e)
     {
         log.error( "Error connecting to API for status. ${e}" )
         UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
     }
+}
+
+def refresh(Map args) {
+    refresh(args.autoLogin ?: true)
 }
 
 def LoginIfSessionExpired() {
@@ -183,6 +200,38 @@ def LoginIfSessionExpired() {
     }
 }
 
+def SendUpdateThermostat(serialNumber, body, Boolean autoLogin = true) {
+    try {
+        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
+            resp -> ProcessUpdateThermostatResponse(resp)
+        }
+    }
+    catch (groovyx.net.http.HttpResponseException e) {
+        if( e.getStatusCode() == 401 && autoLogin) {
+            if (DebugLogsEnabled()) log.trace("Session expired, logging in again");
+            UpsertAttribute( "Status", "Session expired; will log in and retry" );
+            state.remove("SessionId");
+            LoginIfSessionExpired();
+            runIn( 5, "SendUpdateThermostat",
+                [data: [ serialNumber: serialNumber, body: body, autoLogin: false ]]
+            ); // Retry the update after logging in
+        }
+        else {
+            log.error( "Error connecting to API to send update. ${e}" )
+            UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
+        }
+    }
+    catch (IOException e)
+    {
+        log.error( "Error connecting to API to send update. ${e}" )
+        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
+    }
+}
+
+def SendUpdateThermostat(Map args) {
+    SendUpdateThermostat(args.serialNumber, args.body, args.autoLogin ?: true)
+}
+
 def SetThermostatTemperature(serialNumber, temperature) {
     log.info("Received request to update temperature to ${temperature} for thermostat ${serialNumber}")
 
@@ -190,25 +239,15 @@ def SetThermostatTemperature(serialNumber, temperature) {
         return
     }
 
-    try {
+    LoginIfSessionExpired()
 
-        LoginIfSessionExpired()
+    body = [
+        ManualTemperature: temperature,
+        RegulationMode: 3,
+        VacationEnabled: false
+    ]
 
-        body = [
-            ManualTemperature: temperature,
-            RegulationMode: 3,
-            VacationEnabled: false
-        ]
-
-        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
-            resp -> ProcessUpdateThermostatResponse(resp)
-        }
-    }
-    catch (IOException e)
-    {
-        log.error( "Error connecting to API for status. ${e}" )
-        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" ) 
-    }
+    SendUpdateThermostat(serialNumber, body)
 }
 
 def SetThermostatVacationMode(String serialNumber, LocalDate startDate, LocalDate endDate, int temperature) {
@@ -218,29 +257,19 @@ def SetThermostatVacationMode(String serialNumber, LocalDate startDate, LocalDat
         return
     }
 
-    try {
+    LoginIfSessionExpired()
 
-        LoginIfSessionExpired()
+    def formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
 
-        def formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
+    body = [
+        RegulationMode: 4,
+        VacationBeginDay: startDate.atStartOfDay().format(formatter),
+        VacationEnabled: true,
+        VacationEndDay: endDate.atStartOfDay().format(formatter),
+        VacationTemperature: temperature
+    ]
 
-        body = [
-            RegulationMode: 4,
-            VacationBeginDay: startDate.atStartOfDay().format(formatter),
-            VacationEnabled: true,
-            VacationEndDay: endDate.atStartOfDay().format(formatter),
-            VacationTemperature: temperature
-        ]
-
-        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
-            resp -> ProcessUpdateThermostatResponse(resp)
-        }
-    }
-    catch (IOException e)
-    {
-        log.error( "Error connecting to API for status. ${e}" )
-        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
-    }
+    SendUpdateThermostat(serialNumber, body)
 }
 
 def SetThermostatFollowSchedule(serialNumber) {
@@ -250,24 +279,14 @@ def SetThermostatFollowSchedule(serialNumber) {
         return
     }
 
-    try {
+    LoginIfSessionExpired()
 
-        LoginIfSessionExpired()
+    body = [
+        RegulationMode: 1,
+        VacationEnabled: false
+    ]
 
-        body = [
-            RegulationMode: 1,
-            VacationEnabled: false
-        ]
-
-        httpPostJson([ uri: "${baseUri}/api/thermostat?sessionId=${GetCurrentSessionId()}&serialnumber=${serialNumber}", body: body ]) {
-            resp -> ProcessUpdateThermostatResponse(resp)
-        }
-    }
-    catch (IOException e)
-    {
-        log.error( "Error connecting to API for status. ${e}" )
-        UpsertAttribute( "Status", "Local Connection Failed: ${e.message}" )
-    }
+    SendUpdateThermostat(serialNumber, body)
 }
 
 // Gets the current session id if there is one, null if none or expired
@@ -336,7 +355,7 @@ def ProcessLoginSuccessResponse(response) {
     ]
 
     if (DebugLogsEnabled()) {
-        log.debug("Succesfully logged in to Schluter API.")
+        log.debug("Successfully logged in to Schluter API.")
     }
 }
 
